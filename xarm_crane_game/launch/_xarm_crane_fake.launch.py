@@ -23,7 +23,7 @@ from uf_ros_lib.uf_robot_utils import load_yaml, generate_ros2_control_params_te
 
 
 def launch_setup(context, *args, **kwargs):
-    robot_ip = LaunchConfiguration('robot_ip', default='192.168.1.203')
+    robot_ip = LaunchConfiguration('robot_ip', default='')
     report_type = LaunchConfiguration('report_type', default='normal')
     baud_checkset = LaunchConfiguration('baud_checkset', default=True)
     default_gripper_baud = LaunchConfiguration('default_gripper_baud', default=2000000)
@@ -136,7 +136,11 @@ def launch_setup(context, *args, **kwargs):
     xarm_traj_controller = '{}{}_traj_controller'.format(prefix.perform(context), xarm_type)
     servo_yaml['command_out_topic'] = '/{}/joint_trajectory'.format(xarm_traj_controller)
     servo_params = {"moveit_servo": servo_yaml}
-    controllers = ['joint_state_broadcaster']
+    controllers = []
+    if add_gripper.perform(context) in ('True', 'true') and robot_type.perform(context) != 'lite':
+        controllers.append('{}{}_gripper_traj_controller'.format(prefix.perform(context), robot_type.perform(context)))
+    elif add_bio_gripper.perform(context) in ('True', 'true') and robot_type.perform(context) != 'lite':
+        controllers.append('{}bio_gripper_traj_controller'.format(prefix.perform(context)))
 
     # rviz_config_file = PathJoinSubstitution([FindPackageShare(moveit_config_package_name), 'rviz', 'moveit.rviz'])
     rviz_config_file = PathJoinSubstitution([FindPackageShare('xarm_moveit_servo'), 'rviz', 'servo.rviz'])
@@ -165,18 +169,6 @@ def launch_setup(context, *args, **kwargs):
         }.items(),
     )
 
-    # joint state publisher node
-    joint_state_publisher_node = Node(
-        package='joint_state_publisher',
-        executable='joint_state_publisher',
-        name='joint_state_publisher',
-        output='screen',
-        parameters=[{'source_list': ['{}{}/joint_states'.format(prefix.perform(context), hw_ns.perform(context))]}],
-        remappings=[
-            ('follow_joint_trajectory', '{}/follow_joint_trajectory'.format(xarm_traj_controller)),
-        ],
-    )
-
     traj_controller_node = Node(
         package='controller_manager',
         executable='spawner',
@@ -187,18 +179,28 @@ def launch_setup(context, *args, **kwargs):
         ],
     )
 
+    joint_state_broadcaster = Node(
+        package='controller_manager',
+        executable='spawner',
+        output='screen',
+        arguments=[
+            'joint_state_broadcaster',
+            '--controller-manager', '{}/controller_manager'.format(ros_namespace)
+        ],
+    )
+
     # Load controllers
     controller_nodes = []
-    # for controller in controllers:
-    #     controller_nodes.append(Node(
-    #         package='controller_manager',
-    #         executable='spawner',
-    #         output='screen',
-    #         arguments=[
-    #             controller,
-    #             '--controller-manager', '{}/controller_manager'.format(ros_namespace)
-    #         ],
-    #     ))
+    for controller in controllers:
+        controller_nodes.append(Node(
+            package='controller_manager',
+            executable='spawner',
+            output='screen',
+            arguments=[
+                controller,
+                '--controller-manager', '{}/controller_manager'.format(ros_namespace)
+            ],
+        ))
 
     # Launch as much as possible in components
     container = ComposableNodeContainer(
@@ -264,7 +266,7 @@ def launch_setup(context, *args, **kwargs):
             )
         ),
         rviz_node,
-        joint_state_publisher_node,
+        joint_state_broadcaster,
         ros2_control_launch,
         traj_controller_node,
     ] + controller_nodes

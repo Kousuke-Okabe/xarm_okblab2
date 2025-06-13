@@ -1,14 +1,29 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joy.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <control_msgs/msg/joint_jog.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 using namespace std::chrono_literals;
 
+#define GAIN_X -1
+#define GAIN_Y -1
+#define GAIN_Z 1
+#define GAIN_Z_ANGULAR -5
+#define TWIST_SL 0.2
+
+#define GAIN_JOG -1
+
+
 class JoystickCraneNode : public rclcpp::Node{
     public:
-        JoystickCraneNode() : Node("joystick_crane_node") {
-            servo_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
-                "delta_twist_cmds", 10
+        JoystickCraneNode() : Node("joy_to_servo_node") {
+            twist_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
+                "/servo_server/delta_twist_cmds", 10
+            );
+
+            joint_pub_ = this->create_publisher<control_msgs::msg::JointJog>(
+                "/servo_server/delta_joint_cmds", 10
             );
         
             joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>(
@@ -24,33 +39,70 @@ class JoystickCraneNode : public rclcpp::Node{
             timer_param = this->create_wall_timer(
                 10s, std::bind(&JoystickCraneNode::timer_param_callback, this)
             );
+
+            // Request to start_servo
+            servo_start_client_ = this->create_client<std_srvs::srv::Trigger>("/servo_server/start_servo");
+            servo_start_client_->wait_for_service(std::chrono::seconds(1));
+            servo_start_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>());
         }
 
     private:
-        rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr servo_pub_;
-        rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
-        rclcpp::TimerBase::SharedPtr timer_;
+        rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr twist_pub_;
+        rclcpp::Publisher<control_msgs::msg::JointJog>::SharedPtr joint_pub_;
 
-        auto geometry_msgs::msg::TwistStamped twist_cmd_;
+        rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
+
+        rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr servo_start_client_;
+
+        rclcpp::TimerBase::SharedPtr timer_;
+        rclcpp::TimerBase::SharedPtr timer_param;
+
+        geometry_msgs::msg::TwistStamped twist_cmd_;
+        control_msgs::msg::JointJog joint_cmd_;
+        // auto twist_cmd_ = std::make_unique<geometry_msgs::msg::TwistStamped>();
+        // auto joint_cmd_ = std::make_unique<control_msgs::msg::JointJog>();
         double Kp;
 
         void subscribe_joy(const sensor_msgs::msg::Joy::SharedPtr msg) {
+            // Move Twist
             twist_cmd_.header.stamp = this->now();
-            twist_cmd_.header.frame_id = "base_link";
+            twist_cmd_.header.frame_id = "link_base";
 
-            // Assuming axes 0, 1, 2 are for x, y, z movements
-            twist_cmd_.twist.linear.x = msg->axes[0];
-            twist_cmd_.twist.linear.y = msg->axes[1];
-            twist_cmd_.twist.linear.z = msg->axes[2];
+            twist_cmd_.twist.linear.x = msg->axes[1] * GAIN_X;
+            twist_cmd_.twist.linear.y = msg->axes[0] * GAIN_Y;
+            twist_cmd_.twist.linear.z = msg->axes[4] * GAIN_Z;
+            twist_cmd_.twist.angular.z = (msg->axes[2] - msg->axes[5]) * GAIN_Z_ANGULAR;
 
-            // Assuming axes 3, 4, 5 are for angular movements
-            twist_cmd_.twist.angular.x = msg->axes[3];
-            twist_cmd_.twist.angular.y = msg->axes[4];
-            twist_cmd_.twist.angular.z = msg->axes[5];
+            // Soft limit
+            if(twist_cmd_.twist.linear.x < TWIST_SL && twist_cmd_.twist.linear.x > -TWIST_SL)
+                twist_cmd_.twist.linear.x = 0.0;
+            if(twist_cmd_.twist.linear.y < TWIST_SL && twist_cmd_.twist.linear.y > -TWIST_SL)
+                twist_cmd_.twist.linear.y = 0.0;
+            if(twist_cmd_.twist.linear.z < TWIST_SL && twist_cmd_.twist.linear.z > -TWIST_SL)
+                twist_cmd_.twist.linear.z = 0.0;
+            if(twist_cmd_.twist.angular.z < TWIST_SL && twist_cmd_.twist.angular.z > -TWIST_SL)
+                twist_cmd_.twist.angular.z = 0.0;
+
+            // Move Joint
+            if(msg->buttons[3] == 1){
+                joint_cmd_.header.stamp = this->now();
+                joint_cmd_.header.frame_id = "joint";
+                joint_cmd_.joint_names = {"joint2", "joint3", "joint5"};
+
+                joint_cmd_.velocities.resize(3);
+                joint_cmd_.velocities[0] = msg->axes[7] * GAIN_JOG;
+                joint_cmd_.velocities[1] = msg->axes[7] * GAIN_JOG;
+                joint_cmd_.velocities[2] = msg->axes[7] * GAIN_JOG;
+
+                joint_pub_->publish(joint_cmd_);
+                // joint_pub_->publish(std::move(joint_cmd_));
+            }
+
         }
 
         void timer_callback() {
-            servo_pub_->publish(twist_cmd_);
+            twist_pub_->publish(twist_cmd_);
+            // twist_cmd_->publish(std::move(twist_cmd_));
         }
 
         void timer_param_callback() {

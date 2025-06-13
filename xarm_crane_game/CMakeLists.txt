@@ -11,17 +11,21 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(control_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
-add_executable(joystick_crane src/xarm_joystick_crane.cpp)
-ament_target_dependencies(joystick_crane
+add_executable(joy_to_servo_node src/xarm_joystick_crane.cpp)
+ament_target_dependencies(joy_to_servo_node
   rclcpp
   std_msgs
   geometry_msgs
   sensor_msgs
+  control_msgs
+  std_srvs
 )
 
 install(TARGETS
-  joystick_crane
+  joy_to_servo_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
