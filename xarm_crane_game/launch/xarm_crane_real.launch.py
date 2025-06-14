@@ -13,6 +13,8 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
 from launch.actions import TimerAction
+from ament_index_python.packages import get_package_share_directory
+import os
 
 
 def generate_launch_description():
@@ -69,13 +71,20 @@ def generate_launch_description():
     #     }.items(),
     # )
 
+    config_xarm_crane_game = os.path.join(
+        get_package_share_directory('xarm_crane_game'),
+        'config',
+        'xarm_crane_game.yaml'
+    )
+
     delayd_node = TimerAction(
-        period=1.0,
+        period=3.0,
         actions=[
             Node(
                 package='xarm_crane_game',
                 executable='joy_to_servo_node',
-                name='joy_to_servo_node'
+                name='joy_to_servo_node',
+                parameters=[config_xarm_crane_game]
             )
         ]
     )
@@ -83,11 +92,5 @@ def generate_launch_description():
     return LaunchDescription([
         robot_moveit_servo_launch,
         # robot_driver_launch,
-
         delayd_node
-        # Node(
-        #     package='xarm_crane_game',
-        #     executable='joy_to_servo_node',
-        #     name='joy_to_servo_node'
-        # )
     ])

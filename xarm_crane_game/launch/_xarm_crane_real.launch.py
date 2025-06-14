@@ -273,10 +273,4 @@ def launch_setup(context, *args, **kwargs):
 def generate_launch_description():
     return LaunchDescription([
         OpaqueFunction(function=launch_setup)
-
-        # Node(
-        #     package='xarm_crane_game',
-        #     executable='joy_to_servo_node',
-        #     name='joy_to_servo_node'
-        # )
     ])

@@ -6,13 +6,12 @@
 
 using namespace std::chrono_literals;
 
-#define GAIN_X -1
-#define GAIN_Y -1
-#define GAIN_Z 1
-#define GAIN_Z_ANGULAR -5
-#define TWIST_SL 0.2
-
-#define GAIN_JOG -1
+// #define GAIN_X -1
+// #define GAIN_Y -1
+// #define GAIN_Z 1
+// #define GAIN_Z_ANGULAR -5
+// #define TWIST_SL 0.15
+// #define GAIN_JOG -1
 
 
 class JoystickCraneNode : public rclcpp::Node{
@@ -34,11 +33,16 @@ class JoystickCraneNode : public rclcpp::Node{
                 100ms, std::bind(&JoystickCraneNode::timer_callback, this)
             );
 
-            this->declare_parameter<std::double_t>("velocity_gain", 1.0);
-
             timer_param = this->create_wall_timer(
                 10s, std::bind(&JoystickCraneNode::timer_param_callback, this)
             );
+
+            this->declare_parameter<double>("GAIN_X", -1.0);
+            this->declare_parameter<double>("GAIN_Y", -1.0);
+            this->declare_parameter<double>("GAIN_Z", 1.0);
+            this->declare_parameter<double>("GAIN_Z_ANGULAR", -5.0);
+            this->declare_parameter<double>("TWIST_SL", 0.15);
+            this->declare_parameter<double>("GAIN_JOG", -1.0);
 
             // Request to start_servo
             servo_start_client_ = this->create_client<std_srvs::srv::Trigger>("/servo_server/start_servo");
@@ -61,7 +65,7 @@ class JoystickCraneNode : public rclcpp::Node{
         control_msgs::msg::JointJog joint_cmd_;
         // auto twist_cmd_ = std::make_unique<geometry_msgs::msg::TwistStamped>();
         // auto joint_cmd_ = std::make_unique<control_msgs::msg::JointJog>();
-        double Kp;
+        double GAIN_X, GAIN_Y, GAIN_Z, GAIN_Z_ANGULAR, TWIST_SL, GAIN_JOG;
 
         void subscribe_joy(const sensor_msgs::msg::Joy::SharedPtr msg) {
             // Move Twist
@@ -83,20 +87,20 @@ class JoystickCraneNode : public rclcpp::Node{
             if(twist_cmd_.twist.angular.z < TWIST_SL && twist_cmd_.twist.angular.z > -TWIST_SL)
                 twist_cmd_.twist.angular.z = 0.0;
 
-            // Move Joint
-            if(msg->buttons[3] == 1){
-                joint_cmd_.header.stamp = this->now();
-                joint_cmd_.header.frame_id = "joint";
-                joint_cmd_.joint_names = {"joint2", "joint3", "joint5"};
+            // // Move Joint
+            // if(msg->buttons[3] == 1){
+            //     joint_cmd_.header.stamp = this->now();
+            //     joint_cmd_.header.frame_id = "joint";
+            //     joint_cmd_.joint_names = {"joint2", "joint3", "joint5"};
 
-                joint_cmd_.velocities.resize(3);
-                joint_cmd_.velocities[0] = msg->axes[7] * GAIN_JOG;
-                joint_cmd_.velocities[1] = msg->axes[7] * GAIN_JOG;
-                joint_cmd_.velocities[2] = msg->axes[7] * GAIN_JOG;
+            //     joint_cmd_.velocities.resize(3);
+            //     joint_cmd_.velocities[0] = msg->axes[7] * GAIN_JOG;
+            //     joint_cmd_.velocities[1] = msg->axes[7] * GAIN_JOG;
+            //     joint_cmd_.velocities[2] = msg->axes[7] * GAIN_JOG;
 
-                joint_pub_->publish(joint_cmd_);
-                // joint_pub_->publish(std::move(joint_cmd_));
-            }
+            //     joint_pub_->publish(joint_cmd_);
+            //     // joint_pub_->publish(std::move(joint_cmd_));
+            // }
 
         }
 
@@ -106,7 +110,12 @@ class JoystickCraneNode : public rclcpp::Node{
         }
 
         void timer_param_callback() {
-            Kp = this->get_parameter("velocity_gain").as_double();
+            GAIN_X = this->get_parameter("GAIN_X").as_double();
+            GAIN_Y = this->get_parameter("GAIN_Y").as_double();
+            GAIN_Z = this->get_parameter("GAIN_Z").as_double();
+            GAIN_Z_ANGULAR = this->get_parameter("GAIN_Z_ANGULAR").as_double();
+            TWIST_SL = this->get_parameter("TWIST_SL").as_double();
+            GAIN_JOG = this->get_parameter("GAIN_JOG").as_double();
         }
 };
 
